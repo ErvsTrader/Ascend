@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
 import '../models/habit.dart';
+import 'notification_service.dart';
 
 // ---------------------------------------------------------------------------
 // HabitService – CRUD + completion tracking backed by Hive
@@ -11,6 +12,8 @@ class HabitService extends ChangeNotifier {
   static const String _boxName = 'habits';
 
   Box<Habit> get _box => Hive.box<Habit>(_boxName);
+
+  final NotificationService _notifications = NotificationService();
 
   /// Counter for completions to trigger ads.
   int _completionsSinceLastAd = 0;
@@ -51,15 +54,21 @@ class HabitService extends ChangeNotifier {
   // ── Create ──────────────────────────────────────────────────────────────
 
   /// Adds a new habit and persists it. Returns the created [Habit].
+  /// Throws an exception if the 5-habit limit is reached for free users.
   Future<Habit> addHabit({
     required String name,
     required String category,
     required int colorValue,
     required List<String> frequency,
+    required bool isPremium,
     int reminderHour = 8,
     int reminderMinute = 0,
   }) async {
     try {
+      if (!isPremium && totalCount >= 5) {
+        throw Exception('Free tier limit reached (5 habits max). Upgrade to Premium to add more!');
+      }
+
       final habit = Habit(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         name: name,
@@ -70,6 +79,10 @@ class HabitService extends ChangeNotifier {
         reminderMinute: reminderMinute,
       );
       await _box.put(habit.id, habit);
+      
+      // Schedule reminder
+      await _notifications.scheduleHabitReminder(habit);
+      
       notifyListeners();
       return habit;
     } catch (e) {
@@ -104,6 +117,10 @@ class HabitService extends ChangeNotifier {
       if (reminderMinute != null) habit.reminderMinute = reminderMinute;
 
       await habit.save();
+
+      // Reschedule reminder
+      await _notifications.scheduleHabitReminder(habit);
+
       notifyListeners();
     } catch (e) {
       debugPrint('HabitService.updateHabit error: $e');
@@ -117,6 +134,10 @@ class HabitService extends ChangeNotifier {
   Future<void> deleteHabit(String id) async {
     try {
       await _box.delete(id);
+      
+      // Cancel reminder
+      await _notifications.cancelHabitReminder(id);
+      
       notifyListeners();
     } catch (e) {
       debugPrint('HabitService.deleteHabit error: $e');
@@ -182,5 +203,103 @@ class HabitService extends ChangeNotifier {
     final total = totalCount;
     if (total == 0) return 0.0;
     return completedTodayCount / total;
+  }
+
+  /// Completion rate (0.0 - 1.0) for a specific date range across all habits.
+  double getCompletionRateInRange(DateTime start, DateTime end) {
+    final habits = getAllHabits();
+    if (habits.isEmpty) return 0.0;
+
+    int totalExpected = 0;
+    int totalCompleted = 0;
+
+    for (final habit in habits) {
+      // Habit model already has getSuccessRate logic, but we need it for a specific range.
+      // For simplicity, we aggregate daily check-ins.
+      final s = DateTime(start.year, start.month, start.day);
+      final e = DateTime(end.year, end.month, end.day);
+
+      // Map weekday name → DateTime.weekday int
+      final weekdayMap = {
+        'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6, 'Sun': 7,
+      };
+      final activeWeekdays = habit.frequency.map((f) => weekdayMap[f]).toSet();
+
+      for (var d = s; !d.isAfter(e); d = d.add(const Duration(days: 1))) {
+        // Only count days after habit was created and if it's a scheduled day
+        if (!d.isBefore(DateTime(habit.createdDate.year, habit.createdDate.month, habit.createdDate.day)) &&
+            activeWeekdays.contains(d.weekday)) {
+          totalExpected++;
+          if (habit.completedDates.any((cd) => 
+              cd.year == d.year && cd.month == d.month && cd.day == d.day)) {
+            totalCompleted++;
+          }
+        }
+      }
+    }
+
+    if (totalExpected == 0) return 0.0;
+    return totalCompleted / totalExpected;
+  }
+
+  /// Returns a list of daily completion percentages for the last [days] days.
+  List<double> getDailyCompletionRates(int days) {
+    final now = DateTime.now();
+    return List.generate(days, (index) {
+      final date = now.subtract(Duration(days: (days - 1) - index));
+      final dateOnly = DateTime(date.year, date.month, date.day);
+      
+      final habits = getAllHabits();
+      if (habits.isEmpty) return 0.0;
+
+      int expected = 0;
+      int completed = 0;
+
+      final weekdayMap = {
+        'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6, 'Sun': 7,
+      };
+
+      for (final habit in habits) {
+        final activeWeekdays = habit.frequency.map((f) => weekdayMap[f]).toSet();
+        if (!dateOnly.isBefore(DateTime(habit.createdDate.year, habit.createdDate.month, habit.createdDate.day)) &&
+            activeWeekdays.contains(dateOnly.weekday)) {
+          expected++;
+          if (habit.completedDates.any((cd) => 
+              cd.year == dateOnly.year && cd.month == dateOnly.month && cd.day == dateOnly.day)) {
+            completed++;
+          }
+        }
+      }
+      
+      if (expected == 0) return 0.0;
+      return completed / expected;
+    });
+  }
+
+  /// Max streak achieved across all active habits.
+  int getGlobalBestStreak() {
+    final habits = getAllHabits();
+    if (habits.isEmpty) return 0;
+    return habits.fold(0, (max, h) => h.getBestStreak() > max ? h.getBestStreak() : max);
+  }
+
+  /// Total completions across all habits ever.
+  int getTotalGlobalCheckIns() {
+    return getAllHabits().fold(0, (sum, h) => sum + h.completedDates.length);
+  }
+
+  /// Comparison indicator (percentage points) vs previous 7 days.
+  double getCompletionPointTrend() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    
+    final currentStart = today.subtract(const Duration(days: 6));
+    final prevEnd = today.subtract(const Duration(days: 7));
+    final prevStart = today.subtract(const Duration(days: 13));
+
+    final currentRate = getCompletionRateInRange(currentStart, today);
+    final prevRate = getCompletionRateInRange(prevStart, prevEnd);
+
+    return (currentRate - prevRate) * 100;
   }
 }

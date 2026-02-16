@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'core/design_system.dart';
 import 'models/models.dart';
 import 'screens/app_shell.dart';
+import 'screens/onboarding/onboarding_screen.dart';
 import 'services/services.dart';
 
 // ---------------------------------------------------------------------------
@@ -17,6 +18,10 @@ Future<void> main() async {
 
   // ── Mobile Ads initialisation ──────────────────────────────────────────
   await AdService.initialize();
+
+  // ── Notification Service initialisation ─────────────────────────────────
+  final notificationService = NotificationService();
+  await notificationService.init();
 
   // Lock to portrait orientation
   await SystemChrome.setPreferredOrientations([
@@ -39,7 +44,14 @@ Future<void> main() async {
   final premiumService = PremiumService();
   await premiumService.checkPremiumStatus();
 
-  runApp(AscendApp(premiumService: premiumService));
+  // Check onboarding status
+  final prefs = await SharedPreferences.getInstance();
+  final bool onboardingComplete = prefs.getBool('onboardingComplete') ?? false;
+
+  runApp(AscendApp(
+    premiumService: premiumService,
+    showOnboarding: !onboardingComplete,
+  ));
 }
 
 // ---------------------------------------------------------------------------
@@ -48,8 +60,13 @@ Future<void> main() async {
 
 class AscendApp extends StatelessWidget {
   final PremiumService premiumService;
+  final bool showOnboarding;
 
-  const AscendApp({super.key, required this.premiumService});
+  const AscendApp({
+    super.key,
+    required this.premiumService,
+    this.showOnboarding = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -62,12 +79,16 @@ class AscendApp extends StatelessWidget {
           create: (context) => AdService(premiumService: premiumService),
           update: (_, premium, adService) => adService ?? AdService(premiumService: premium),
         ),
+        ChangeNotifierProvider(
+          create: (context) => PurchaseService(premiumService: premiumService),
+        ),
+        Provider.value(value: NotificationService()),
       ],
       child: MaterialApp(
         title: 'Ascend',
         debugShowCheckedModeBanner: false,
         theme: _buildTheme(),
-        home: const AppShell(),
+        home: showOnboarding ? const OnboardingScreen() : const AppShell(),
       ),
     );
   }
@@ -187,6 +208,14 @@ class AscendApp extends StatelessWidget {
         shape: RoundedRectangleBorder(
           borderRadius: AppRadius.circleBorder,
         ),
+      ),
+
+      // Page transitions
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: {
+          TargetPlatform.android: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+        },
       ),
     );
   }

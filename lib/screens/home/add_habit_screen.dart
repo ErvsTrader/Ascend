@@ -1,10 +1,12 @@
-import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/design_system.dart';
+import '../../models/habit.dart';
 import '../../services/habit_service.dart';
+import '../../services/premium_service.dart';
 
 class AddHabitScreen extends StatefulWidget {
-  const AddHabitScreen({super.key});
+  final Habit? habit;
+  const AddHabitScreen({super.key, this.habit});
 
   @override
   State<AddHabitScreen> createState() => _AddHabitScreenState();
@@ -17,6 +19,43 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
   Set<int> _selectedDays = {1, 2, 3, 4, 5, 6, 7}; // Default all days
   Color _selectedColor = AppColors.habitIndigo;
   TimeOfDay _selectedTime = const TimeOfDay(hour: 8, minute: 0);
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.habit != null) {
+      _nameController.text = widget.habit!.name;
+      _selectedColor = Color(widget.habit!.colorValue);
+      _selectedTime = widget.habit!.reminderTime;
+      _selectedDays = _parseFrequency(widget.habit!.frequency);
+    } else {
+      _loadDefaultReminderTime();
+    }
+  }
+
+  Set<int> _parseFrequency(List<String> freq) {
+    return freq.map((s) {
+      switch (s) {
+        case 'Mon': return 1;
+        case 'Tue': return 2;
+        case 'Wed': return 3;
+        case 'Thu': return 4;
+        case 'Fri': return 5;
+        case 'Sat': return 6;
+        case 'Sun': return 7;
+        default: return 1;
+      }
+    }).toSet();
+  }
+
+  Future<void> _loadDefaultReminderTime() async {
+    final prefs = await SharedPreferences.getInstance();
+    final hour = prefs.getInt('reminder_hour') ?? 8;
+    final minute = prefs.getInt('reminder_minute') ?? 0;
+    setState(() {
+      _selectedTime = TimeOfDay(hour: hour, minute: minute);
+    });
+  }
 
   final List<Map<String, dynamic>> _days = [
     {'label': 'Mon', 'value': 1},
@@ -78,9 +117,10 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
     }
   }
 
-  void _createHabit() async {
+  void _saveHabit() async {
     if (_formKey.currentState!.validate()) {
       final habitService = context.read<HabitService>();
+      final premiumService = context.read<PremiumService>();
       
       final List<String> frequencyStrings = _selectedDays.map((d) {
         switch (d) {
@@ -95,16 +135,65 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
         }
       }).toList();
 
-      await habitService.addHabit(
-        name: _nameController.text.trim(),
-        category: 'Personal', // Default for now
-        colorValue: _selectedColor.value,
-        frequency: frequencyStrings,
-        reminderHour: _selectedTime.hour,
-        reminderMinute: _selectedTime.minute,
-      );
+      try {
+        if (widget.habit != null) {
+          // Update existing
+          widget.habit!.name = _nameController.text.trim();
+          widget.habit!.colorValue = _selectedColor.value;
+          widget.habit!.reminderHour = _selectedTime.hour;
+          widget.habit!.reminderMinute = _selectedTime.minute;
+          widget.habit!.frequency = frequencyStrings;
+          
+          await habitService.updateHabit(widget.habit!);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Habit updated!'),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+            Navigator.pop(context);
+          }
+        } else {
+          // Create new
+          await habitService.addHabit(
+            name: _nameController.text.trim(),
+            category: 'Personal',
+            colorValue: _selectedColor.value,
+            frequency: frequencyStrings,
+            isPremium: premiumService.isPremium,
+            reminderHour: _selectedTime.hour,
+            reminderMinute: _selectedTime.minute,
+          );
 
-      if (mounted) Navigator.pop(context);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Habit created! 🎉'),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+            Navigator.pop(context);
+          }
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(e.toString().replaceAll('Exception: ', '')),
+              backgroundColor: AppColors.habitCoral,
+              behavior: SnackBarBehavior.floating,
+              action: e.toString().contains('Limit reached') ? SnackBarAction(
+                label: 'Upgrade',
+                textColor: Colors.white,
+                onPressed: () {
+                  // TODO: Navigate to settings or show upgrade prompt
+                },
+              ) : null,
+            ),
+          );
+        }
+      }
     }
   }
 
@@ -137,7 +226,10 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                     onPressed: () => Navigator.pop(context),
                     icon: const Icon(Icons.close_rounded),
                   ),
-                  Text('New Habit', style: AppTypography.headlineSmall),
+                  Text(
+                    widget.habit != null ? 'Edit Habit' : 'New Habit',
+                    style: AppTypography.headlineSmall,
+                  ),
                   const SizedBox(width: 48), // Spacer for balance
                 ],
               ),
@@ -264,13 +356,13 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
                   Expanded(
                     flex: 2,
                     child: ElevatedButton(
-                      onPressed: _createHabit,
+                      onPressed: _saveHabit,
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
-                        children: const [
-                          Text('Create Habit'),
-                          SizedBox(width: AppSpacing.sm),
-                          Icon(Icons.arrow_forward_rounded, size: 20),
+                        children: [
+                          Text(widget.habit != null ? 'Save Changes' : 'Create Habit'),
+                          const SizedBox(width: AppSpacing.sm),
+                          const Icon(Icons.arrow_forward_rounded, size: 20),
                         ],
                       ),
                     ),

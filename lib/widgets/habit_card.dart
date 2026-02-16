@@ -9,7 +9,7 @@ import '../models/habit.dart';
 // HabitCard – single habit row matching Visily Home.png
 // ---------------------------------------------------------------------------
 
-class HabitCard extends StatelessWidget {
+class HabitCard extends StatefulWidget {
   final Habit habit;
   final VoidCallback? onToggle;
   final VoidCallback? onTap;
@@ -22,86 +22,118 @@ class HabitCard extends StatelessWidget {
   });
 
   @override
+  State<HabitCard> createState() => _HabitCardState();
+}
+
+class _HabitCardState extends State<HabitCard> {
+  bool _isTapping = false;
+
+  @override
   Widget build(BuildContext context) {
-    final completed = habit.isCompletedToday();
-    final streak = habit.getCurrentStreak();
-    final timeStr = _formatTime(habit.reminderTime);
+    final completed = widget.habit.isCompletedToday();
+    final streak = widget.habit.getCurrentStreak();
+    final timeStr = _formatTime(widget.habit.reminderTime);
 
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: AppSpacing.cardGap),
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.lg,
-          vertical: AppSpacing.md,
-        ),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: AppRadius.cardBorder,
-          boxShadow: AppShadows.cardSm,
-        ),
-        child: Row(
-          children: [
-            // ── Streak icon ──────────────────────────────────────────
-            _StreakBadge(streak: streak, color: Color(habit.colorValue)),
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 500),
+      curve: Curves.easeOut,
+      builder: (context, value, child) {
+        return Opacity(
+          opacity: value,
+          child: Transform.translate(
+            offset: Offset(0, 20 * (1 - value)),
+            child: child,
+          ),
+        );
+      },
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: Container(
+          margin: const EdgeInsets.only(bottom: AppSpacing.cardGap),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.md,
+          ),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: AppRadius.cardBorder,
+            boxShadow: AppShadows.cardSm,
+          ),
+          child: Row(
+            children: [
+              // ── Streak icon ──────────────────────────────────────────
+              _StreakBadge(streak: streak, color: Color(widget.habit.colorValue)),
 
-            const SizedBox(width: AppSpacing.md),
+              const SizedBox(width: AppSpacing.md),
 
-            // ── Habit info ───────────────────────────────────────────
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(habit.name, style: AppTypography.titleMedium),
-                  const SizedBox(height: AppSpacing.xs),
-                  Row(
-                    children: [
-                      Text(
-                        habit.category.toUpperCase(),
-                        style: AppTypography.labelLarge,
-                      ),
-                      const SizedBox(width: AppSpacing.sm),
-                      Icon(
-                        Icons.access_time_rounded,
-                        size: 12,
-                        color: AppColors.textTertiary,
-                      ),
-                      const SizedBox(width: AppSpacing.xs),
-                      Text(timeStr, style: AppTypography.bodySmall),
-                    ],
-                  ),
-                ],
+              // ── Habit info ───────────────────────────────────────────
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(widget.habit.name, style: AppTypography.titleMedium),
+                    const SizedBox(height: AppSpacing.xs),
+                    Row(
+                      children: [
+                        Text(
+                          widget.habit.category.toUpperCase(),
+                          style: AppTypography.labelLarge,
+                        ),
+                        const SizedBox(width: AppSpacing.sm),
+                        Icon(
+                          Icons.access_time_rounded,
+                          size: 12,
+                          color: AppColors.textTertiary,
+                        ),
+                        const SizedBox(width: AppSpacing.xs),
+                        Text(timeStr, style: AppTypography.bodySmall),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
 
-            // ── Circular checkbox ────────────────────────────────────
-            GestureDetector(
-              onTap: () {
-                HapticFeedback.lightImpact();
-                if (onToggle != null) onToggle!();
-              },
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                width: AppComponents.checkboxSize,
-                height: AppComponents.checkboxSize,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: completed ? AppColors.primary : Colors.transparent,
-                  border: Border.all(
-                    color: completed ? AppColors.primary : AppColors.unchecked,
-                    width: 2,
+              // ── Circular checkbox ────────────────────────────────────
+              GestureDetector(
+                onTapDown: (_) => setState(() => _isTapping = true),
+                onTapUp: (_) => setState(() => _isTapping = false),
+                onTapCancel: () => setState(() => _isTapping = false),
+                onTap: () {
+                  if (!completed) {
+                    HapticFeedback.mediumImpact();
+                  } else {
+                    HapticFeedback.lightImpact();
+                  }
+                  if (widget.onToggle != null) widget.onToggle!();
+                },
+                child: AnimatedScale(
+                  scale: _isTapping ? 1.2 : 1.0,
+                  duration: const Duration(milliseconds: 100),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    width: AppComponents.checkboxSize,
+                    height: AppComponents.checkboxSize,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: completed ? AppColors.primary : Colors.transparent,
+                      border: Border.all(
+                        color: completed ? AppColors.primary : AppColors.unchecked,
+                        width: 2,
+                      ),
+                    ),
+                    child: completed
+                        ? const Icon(
+                            Icons.check_rounded,
+                            size: 16,
+                            color: AppColors.textOnPrimary,
+                          )
+                        : null,
                   ),
                 ),
-                child: completed
-                    ? const Icon(
-                        Icons.check_rounded,
-                        size: 16,
-                        color: AppColors.textOnPrimary,
-                      )
-                    : null,
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

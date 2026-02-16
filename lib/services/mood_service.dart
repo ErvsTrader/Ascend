@@ -146,6 +146,18 @@ class MoodService extends ChangeNotifier {
   /// Total number of check-ins ever recorded.
   int get totalCheckIns => _box.length;
 
+  /// Returns a human-readable label for an average mood score.
+  String getMoodLabelFromScore(double score) {
+    if (score >= 4.5) return 'Ecstatic & Joyful';
+    if (score >= 4.0) return 'Happy & Positive';
+    if (score >= 3.5) return 'Calm & Peaceful';
+    if (score >= 3.0) return 'Balanced / Neutral';
+    if (score >= 2.5) return 'A Bit Tired';
+    if (score >= 2.0) return 'Slightly Stressed';
+    if (score >= 1.5) return 'Sad / Low Energy';
+    return 'Gloomy / Stressed';
+  }
+
   // ── Private ─────────────────────────────────────────────────────────────
 
   /// Deterministic Hive key for a calendar day → `"YYYY-MM-DD"`.

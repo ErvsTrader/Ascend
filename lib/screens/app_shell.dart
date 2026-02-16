@@ -20,12 +20,12 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   int _currentIndex = 0;
 
-  // Placeholder screens for tabs not yet built.
+  // Screens for tabs
   static const _screens = <Widget>[
     HomeScreen(),
-    _PlaceholderScreen(title: 'Statistics', icon: Icons.bar_chart_rounded),
-    _PlaceholderScreen(title: 'Mood', icon: Icons.sentiment_satisfied_alt_rounded),
-    _PlaceholderScreen(title: 'Settings', icon: Icons.settings_outlined),
+    StatsScreen(),
+    MoodScreen(),
+    SettingsScreen(),
   ];
 
   @override
@@ -104,11 +104,18 @@ class _AppShellState extends State<AppShell> {
                     _NavItem(
                       icon: Icons.sentiment_satisfied_alt_rounded,
                       label: 'Mood',
-                      isActive: _currentIndex == 2,
-                      onTap: () => setState(() => _currentIndex = 2),
+                      isActive: false, 
+                      onTap: () {
+                        showModalBottomSheet(
+                          context: context,
+                          isScrollControlled: true,
+                          backgroundColor: Colors.transparent,
+                          builder: (context) => const MoodCheckInSheet(),
+                        );
+                      },
                     ),
                     _NavItem(
-                      icon: Icons.settings_outlined,
+                      icon: Icons.settings_rounded,
                       label: 'Settings',
                       isActive: _currentIndex == 3,
                       onTap: () => setState(() => _currentIndex = 3),
@@ -155,13 +162,13 @@ class _NavItem extends StatelessWidget {
               size: AppComponents.navIconSize,
               color: isActive ? AppColors.primary : AppColors.textTertiary,
             ),
-            const SizedBox(height: AppSpacing.xs),
-            Text(
-              label,
-              style: isActive
-                  ? AppTypography.navLabelActive
-                  : AppTypography.navLabel,
-            ),
+            if (isActive) ...[
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                label,
+                style: AppTypography.navLabelActive,
+              ),
+            ],
           ],
         ),
       ),
@@ -169,32 +176,4 @@ class _NavItem extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// _PlaceholderScreen – temporary placeholder for unbuilt tabs
-// ---------------------------------------------------------------------------
-
-class _PlaceholderScreen extends StatelessWidget {
-  final String title;
-  final IconData icon;
-
-  const _PlaceholderScreen({required this.title, required this.icon});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 48, color: AppColors.textTertiary),
-            const SizedBox(height: AppSpacing.lg),
-            Text(title, style: AppTypography.headlineMedium),
-            const SizedBox(height: AppSpacing.sm),
-            Text('Coming soon', style: AppTypography.bodyMedium),
-          ],
-        ),
-      ),
-    );
-  }
-}
+// ... removed _PlaceholderScreen as it is no longer used
