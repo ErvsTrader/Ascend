@@ -221,7 +221,8 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
             ),
             const SizedBox(height: AppSpacing.md),
             _buildActivityLog(habit, moodService, isPremium),
-            
+          ],
+        ),
       ),
       bottomNavigationBar: isPremium
           ? null
@@ -280,5 +281,4 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
       ),
     );
   }
-}
 }

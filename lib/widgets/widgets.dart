@@ -1,6 +1,6 @@
 // Ascend – Widgets barrel file
 
-export 'ad_banner.dart';
+export 'ad_banner_web.dart' if (dart.library.io) 'ad_banner.dart';
 export 'daily_progress_card.dart';
 export 'habit_card.dart';
 export 'weekly_streak.dart';

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/design_system.dart';
 import 'models/models.dart';
@@ -44,12 +45,17 @@ Future<void> main() async {
   final premiumService = PremiumService();
   await premiumService.checkPremiumStatus();
 
+  // Initialise settings
+  final settingsService = SettingsService();
+  await settingsService.init();
+
   // Check onboarding status
   final prefs = await SharedPreferences.getInstance();
   final bool onboardingComplete = prefs.getBool('onboardingComplete') ?? false;
 
   runApp(AscendApp(
     premiumService: premiumService,
+    settingsService: settingsService,
     showOnboarding: !onboardingComplete,
   ));
 }
@@ -60,11 +66,13 @@ Future<void> main() async {
 
 class AscendApp extends StatelessWidget {
   final PremiumService premiumService;
+  final SettingsService settingsService;
   final bool showOnboarding;
 
   const AscendApp({
     super.key,
     required this.premiumService,
+    required this.settingsService,
     this.showOnboarding = false,
   });
 
@@ -75,6 +83,7 @@ class AscendApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => HabitService()),
         ChangeNotifierProvider(create: (_) => MoodService()),
         ChangeNotifierProvider.value(value: premiumService),
+        ChangeNotifierProvider.value(value: settingsService),
         ChangeNotifierProxyProvider<PremiumService, AdService>(
           create: (context) => AdService(premiumService: premiumService),
           update: (_, premium, adService) => adService ?? AdService(premiumService: premium),
@@ -83,18 +92,31 @@ class AscendApp extends StatelessWidget {
           create: (context) => PurchaseService(premiumService: premiumService),
         ),
         Provider.value(value: NotificationService()),
+        ChangeNotifierProxyProvider2<HabitService, MoodService, StatsService>(
+          create: (context) => StatsService(
+            habitService: context.read<HabitService>(),
+            moodService: context.read<MoodService>(),
+          ),
+          update: (context, habit, mood, stats) => 
+            stats ?? StatsService(habitService: habit, moodService: mood),
+        ),
       ],
-      child: MaterialApp(
-        title: 'Ascend',
-        debugShowCheckedModeBanner: false,
-        theme: _buildTheme(),
-        home: showOnboarding ? const OnboardingScreen() : const AppShell(),
+      child: Consumer<SettingsService>(
+        builder: (context, settings, _) {
+          return MaterialApp(
+            title: 'Ascend',
+            debugShowCheckedModeBanner: false,
+            theme: _buildTheme(isDark: false),
+            darkTheme: _buildTheme(isDark: true),
+            themeMode: settings.isDarkMode ? ThemeMode.dark : ThemeMode.light,
+            home: showOnboarding ? const OnboardingScreen() : const AppShell(),
+          );
+        },
       ),
     );
   }
 
-  // ── Theme built from design system tokens ───────────────────────────────
-  ThemeData _buildTheme() {
+  ThemeData _buildTheme({required bool isDark}) {
     return ThemeData(
       useMaterial3: true,
       fontFamily: 'Inter',
@@ -103,24 +125,28 @@ class AscendApp extends StatelessWidget {
       colorScheme: ColorScheme.fromSeed(
         seedColor: AppColors.primary,
         primary: AppColors.primary,
-        surface: AppColors.surface,
+        surface: isDark ? const Color(0xFF1F2937) : AppColors.surface,
         error: AppColors.error,
-        brightness: Brightness.light,
+        brightness: isDark ? Brightness.dark : Brightness.light,
       ),
-      scaffoldBackgroundColor: AppColors.background,
+      scaffoldBackgroundColor: isDark ? const Color(0xFF111827) : AppColors.background,
 
       // App bar
-      appBarTheme: const AppBarTheme(
-        backgroundColor: AppColors.background,
-        foregroundColor: AppColors.textPrimary,
+      appBarTheme: AppBarTheme(
+        backgroundColor: isDark ? const Color(0xFF111827) : AppColors.background,
+        foregroundColor: isDark ? Colors.white : AppColors.textPrimary,
         elevation: 0,
         centerTitle: false,
-        titleTextStyle: AppTypography.headlineSmall,
+        titleTextStyle: AppTypography.headlineSmall.copyWith(
+          color: isDark ? Colors.white : AppColors.textPrimary,
+        ),
       ),
+      
+      dividerColor: isDark ? Colors.white10 : AppColors.divider,
 
       // Cards
       cardTheme: CardThemeData(
-        color: AppColors.surface,
+        color: isDark ? const Color(0xFF1F2937) : AppColors.surface,
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: AppRadius.cardBorder,
@@ -147,8 +173,8 @@ class AscendApp extends StatelessWidget {
       // Outlined buttons (secondary CTA)
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.textPrimary,
-          side: const BorderSide(color: AppColors.border),
+          foregroundColor: isDark ? AppColors.primaryLight : AppColors.primary,
+          side: BorderSide(color: isDark ? Colors.white12 : AppColors.border),
           minimumSize: const Size(double.infinity, 44),
           shape: RoundedRectangleBorder(
             borderRadius: AppRadius.buttonBorder,
@@ -160,18 +186,18 @@ class AscendApp extends StatelessWidget {
       // Input fields
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: AppColors.surface,
+        fillColor: isDark ? const Color(0xFF374151) : AppColors.surface,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.lg,
           vertical: AppSpacing.md,
         ),
         border: OutlineInputBorder(
           borderRadius: AppRadius.inputBorder,
-          borderSide: const BorderSide(color: AppColors.border),
+          borderSide: BorderSide(color: isDark ? Colors.white10 : AppColors.border),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: AppRadius.inputBorder,
-          borderSide: const BorderSide(color: AppColors.border),
+          borderSide: BorderSide(color: isDark ? Colors.white10 : AppColors.border),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: AppRadius.inputBorder,
@@ -183,8 +209,8 @@ class AscendApp extends StatelessWidget {
       ),
 
       // Bottom nav
-      bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-        backgroundColor: AppColors.navBar,
+      bottomNavigationBarTheme: BottomNavigationBarThemeData(
+        backgroundColor: isDark ? const Color(0xFF1F2937) : AppColors.navBar,
         selectedItemColor: AppColors.primary,
         unselectedItemColor: AppColors.textTertiary,
         selectedLabelStyle: AppTypography.navLabelActive,
@@ -194,8 +220,8 @@ class AscendApp extends StatelessWidget {
       ),
 
       // Dividers
-      dividerTheme: const DividerThemeData(
-        color: AppColors.divider,
+      dividerTheme: DividerThemeData(
+        color: isDark ? Colors.white10 : AppColors.divider,
         thickness: 1,
         space: 0,
       ),

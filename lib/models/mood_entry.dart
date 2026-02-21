@@ -56,15 +56,15 @@ class MoodEntry extends HiveObject {
   /// Numeric score for averaging (1 = gloomy … 5 = ecstatic).
   double get moodScore {
     const scores = <String, double>{
-      'gloomy': 1.0,
-      'sad': 1.5,
-      'stressed': 2.0,
-      'tired': 2.5,
-      'neutral': 3.0,
+      'ecstatic': 5.0,
+      'happy': 4.0,
       'calm': 3.5,
       'grateful': 4.0,
-      'happy': 4.5,
-      'ecstatic': 5.0,
+      'neutral': 3.0,
+      'tired': 2.5,
+      'sad': 2.0,
+      'stressed': 2.0,
+      'gloomy': 1.0,
     };
     return scores[moodType] ?? 3.0;
   }

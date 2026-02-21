@@ -15,43 +15,29 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  final TextEditingController _nameController = TextEditingController();
-  bool _notificationsOn = true;
-  TimeOfDay _reminderTime = const TimeOfDay(hour: 8, minute: 0);
-  bool _isDarkMode = false;
+  late TextEditingController _nameController;
 
   @override
   void initState() {
     super.initState();
-    _loadSettings();
+    final settings = context.read<SettingsService>();
+    _nameController = TextEditingController(text: settings.userName);
   }
 
-  Future<void> _loadSettings() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _nameController.text = prefs.getString('user_name') ?? 'Alex';
-      _notificationsOn = prefs.getBool('notifications_enabled') ?? true;
-      final hour = prefs.getInt('reminder_hour') ?? 8;
-      final minute = prefs.getInt('reminder_minute') ?? 0;
-      _reminderTime = TimeOfDay(hour: hour, minute: minute);
-      _isDarkMode = prefs.getBool('dark_mode_enabled') ?? false;
-    });
-  }
-
-  Future<void> _saveSetting(String key, dynamic value) async {
-    final prefs = await SharedPreferences.getInstance();
-    if (value is String) await prefs.setString(key, value);
-    if (value is bool) await prefs.setBool(key, value);
-    if (value is int) await prefs.setInt(key, value);
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final settingsService = context.watch<SettingsService>();
     final premiumService = context.watch<PremiumService>();
     final isPremium = premiumService.isPremium;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(AppSpacing.pageHorizontal),
@@ -59,7 +45,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: AppSpacing.md),
-              Text('Settings', style: AppTypography.headlineLarge),
+              Text('Settings', style: AppTypography.headlineLarge.copyWith(
+                color: Theme.of(context).textTheme.headlineLarge?.color,
+              )),
               const SizedBox(height: AppSpacing.xl),
 
               // ── Profile Section ────────────────────────────────────
@@ -67,9 +55,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Container(
                 padding: const EdgeInsets.all(AppSpacing.lg),
                 decoration: BoxDecoration(
-                  color: AppColors.surface,
+                  color: Theme.of(context).cardTheme.color,
                   borderRadius: AppRadius.cardBorder,
-                  boxShadow: AppShadows.cardSm,
+                  boxShadow: settingsService.isDarkMode ? null : AppShadows.cardSm,
                 ),
                 child: Row(
                   children: [
@@ -77,7 +65,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       width: 60,
                       height: 60,
                       decoration: BoxDecoration(
-                        color: AppColors.primarySurface,
+                        color: AppColors.primarySurface.withOpacity(settingsService.isDarkMode ? 0.1 : 1.0),
                         shape: BoxShape.circle,
                         border: Border.all(color: AppColors.primary.withOpacity(0.2), width: 2),
                       ),
@@ -91,14 +79,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           Text('Display Name', style: AppTypography.labelSmall.copyWith(color: AppColors.textTertiary)),
                           TextField(
                             controller: _nameController,
-                            style: AppTypography.titleMedium,
+                            style: AppTypography.titleMedium.copyWith(
+                              color: Theme.of(context).textTheme.titleMedium?.color,
+                            ),
                             decoration: const InputDecoration(
                               hintText: 'Enter your name',
                               border: InputBorder.none,
+                              enabledBorder: InputBorder.none,
+                              focusedBorder: InputBorder.none,
                               isDense: true,
+                              fillColor: Colors.transparent,
                               contentPadding: EdgeInsets.symmetric(vertical: 4),
                             ),
-                            onChanged: (val) => _saveSetting('user_name', val),
+                            onChanged: (val) => settingsService.setUserName(val),
                           ),
                         ],
                       ),
@@ -112,9 +105,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _buildSectionHeader('PREFERENCES'),
               Container(
                 decoration: BoxDecoration(
-                  color: AppColors.surface,
+                  color: Theme.of(context).cardTheme.color,
                   borderRadius: AppRadius.cardBorder,
-                  boxShadow: AppShadows.cardSm,
+                  boxShadow: settingsService.isDarkMode ? null : AppShadows.cardSm,
                 ),
                 child: Column(
                   children: [
@@ -122,30 +115,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       icon: Icons.notifications_active_outlined,
                       title: 'Notifications',
                       trailing: Switch.adaptive(
-                        value: _notificationsOn,
+                        value: settingsService.notificationsEnabled,
                         activeColor: AppColors.primary,
                         onChanged: (val) async {
                           if (val) {
-                            // Show explanation dialog first if it's the first time
                             final granted = await _requestNotificationPermission();
                             if (!granted) return;
                           }
 
-                          setState(() => _notificationsOn = val);
-                          await _saveSetting('notifications_enabled', val);
+                          await settingsService.setNotificationsEnabled(val);
 
                           if (mounted) {
                             final habitService = context.read<HabitService>();
                             final notificationService = context.read<NotificationService>();
                             
                             if (val) {
-                              // Reschedule all
                               final habits = habitService.getAllHabits();
                               for (final habit in habits) {
-                                await notificationService.scheduleHabitReminder(habit);
+                                await notificationService.scheduleHabitReminder(
+                                  habit, 
+                                  sound: settingsService.notificationSound,
+                                );
                               }
                             } else {
-                              // Cancel all
                               await notificationService.cancelAll();
                             }
                           }
@@ -154,21 +146,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     const Divider(height: 1, indent: 56),
                     _buildPreferenceTile(
+                      icon: Icons.music_note_rounded,
+                      title: 'Notification Sound',
+                      subtitle: _getSoundName(settingsService.notificationSound),
+                      onTap: () => _showSoundPicker(context, settingsService),
+                    ),
+                    const Divider(height: 1, indent: 56),
+                    _buildPreferenceTile(
                       icon: Icons.access_time_rounded,
                       title: 'Daily Reminder',
-                      subtitle: _formatTimeOfDay(_reminderTime),
+                      subtitle: _formatTimeOfDay(settingsService.defaultReminderTime),
                       onTap: () async {
                         final time = await showTimePicker(
                           context: context,
-                          initialTime: _reminderTime,
+                          initialTime: settingsService.defaultReminderTime,
                         );
                         if (time != null) {
-                          setState(() => _reminderTime = time);
-                          await _saveSetting('reminder_hour', time.hour);
-                          await _saveSetting('reminder_minute', time.minute);
-                          // This is the "default" time for new habits, no need to reschedule existing ones
-                          // unless the user expects a global change. The requirement says:
-                          // "Time picker to set default reminder time for new habits"
+                          await settingsService.setDefaultReminderTime(time);
                         }
                       },
                     ),
@@ -177,12 +171,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       icon: Icons.dark_mode_outlined,
                       title: 'Dark Mode',
                       trailing: Switch.adaptive(
-                        value: _isDarkMode,
+                        value: settingsService.isDarkMode,
                         activeColor: AppColors.primary,
                         onChanged: (val) {
-                          setState(() => _isDarkMode = val);
-                          _saveSetting('dark_mode_enabled', val);
-                          // Future: Trigger theme change
+                          settingsService.setDarkMode(val);
                         },
                       ),
                     ),
@@ -206,9 +198,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _buildSectionHeader('ABOUT'),
               Container(
                 decoration: BoxDecoration(
-                  color: AppColors.surface,
+                  color: Theme.of(context).cardTheme.color,
                   borderRadius: AppRadius.cardBorder,
-                  boxShadow: AppShadows.cardSm,
+                  boxShadow: settingsService.isDarkMode ? null : AppShadows.cardSm,
                 ),
                 child: Column(
                   children: [
@@ -221,25 +213,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     _buildPreferenceTile(
                       icon: Icons.privacy_tip_outlined,
                       title: 'Privacy Policy',
-                      onTap: () {},
+                      onTap: () => _showComingSoon(context, 'Privacy Policy'),
                     ),
                     const Divider(height: 1, indent: 56),
                     _buildPreferenceTile(
                       icon: Icons.description_outlined,
                       title: 'Terms of Service',
-                      onTap: () {},
+                      onTap: () => _showComingSoon(context, 'Terms of Service'),
                     ),
                     const Divider(height: 1, indent: 56),
                     _buildPreferenceTile(
                       icon: Icons.star_outline_rounded,
                       title: 'Rate Us',
-                      onTap: () {},
+                      onTap: () => _showComingSoon(context, 'Rate Us'),
                     ),
                     const Divider(height: 1, indent: 56),
                     _buildPreferenceTile(
                       icon: Icons.support_agent_rounded,
                       title: 'Contact Support',
-                      onTap: () {},
+                      onTap: () => _showComingSoon(context, 'Contact Support'),
                     ),
                   ],
                 ),
@@ -250,7 +242,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               SizedBox(
                 width: double.infinity,
                 child: TextButton.icon(
-                  onPressed: () {},
+                  onPressed: () => _showSignOutDialog(context),
                   icon: const Icon(Icons.logout_rounded, color: AppColors.habitCoral),
                   label: Text(
                     'Sign Out',
@@ -286,10 +278,113 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return ListTile(
       onTap: onTap,
       leading: Icon(icon, color: AppColors.primary),
-      title: Text(title, style: AppTypography.titleSmall),
+      title: Text(title, style: AppTypography.titleSmall.copyWith(
+        color: Theme.of(context).textTheme.titleSmall?.color,
+      )),
       subtitle: subtitle != null ? Text(subtitle, style: AppTypography.bodySmall) : null,
       trailing: trailing ?? (onTap != null ? const Icon(Icons.chevron_right_rounded, color: AppColors.textTertiary) : null),
       contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: 4),
+    );
+  }
+
+  Future<void> _showSoundPicker(BuildContext context, SettingsService settings) async {
+    final sounds = {
+      'default': 'System Default',
+      'gentle': 'Gentle Breeze',
+      'success': 'Success Sparkle',
+      'custom_ring': 'Custom Ringtone',
+    };
+
+    await showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              child: Row(
+                children: [
+                  const Icon(Icons.music_note_rounded, color: AppColors.primary),
+                  const SizedBox(width: 12),
+                  Text('Notification Sound', style: AppTypography.titleLarge),
+                ],
+              ),
+            ),
+            const Divider(),
+            ...sounds.entries.map((entry) => RadioListTile<String>(
+              title: Text(entry.value),
+              value: entry.key,
+              groupValue: settings.notificationSound,
+              activeColor: AppColors.primary,
+              onChanged: (val) async {
+                if (val != null) {
+                  await settings.setNotificationSound(val);
+                  if (mounted) {
+                    // Update all scheduled notifications with new sound
+                    final habitService = context.read<HabitService>();
+                    final notificationService = context.read<NotificationService>();
+                    if (settings.notificationsEnabled) {
+                      final habits = habitService.getAllHabits();
+                      for (final habit in habits) {
+                        await notificationService.scheduleHabitReminder(habit, sound: val);
+                      }
+                    }
+                    Navigator.pop(context);
+                  }
+                }
+              },
+            )),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _getSoundName(String key) {
+    switch (key) {
+      case 'gentle': return 'Gentle Breeze';
+      case 'success': return 'Success Sparkle';
+      case 'custom_ring': return 'Custom Ringtone';
+      default: return 'System Default';
+    }
+  }
+
+  void _showComingSoon(BuildContext context, String feature) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$feature feature coming soon!'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  void _showSignOutDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Sign Out'),
+        content: const Text('Are you sure you want to sign out? Your habit data is stored locally.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              // Dummy sign out - just close dialog
+              Navigator.pop(context);
+              _showComingSoon(context, 'Sign Out');
+            },
+            child: const Text('Sign Out', style: TextStyle(color: AppColors.habitCoral)),
+          ),
+        ],
+      ),
     );
   }
 

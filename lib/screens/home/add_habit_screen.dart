@@ -1,8 +1,9 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/design_system.dart';
 import '../../models/habit.dart';
-import '../../services/habit_service.dart';
-import '../../services/premium_service.dart';
+import '../../services/services.dart';
 
 class AddHabitScreen extends StatefulWidget {
   final Habit? habit;
@@ -29,7 +30,8 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
       _selectedTime = widget.habit!.reminderTime;
       _selectedDays = _parseFrequency(widget.habit!.frequency);
     } else {
-      _loadDefaultReminderTime();
+      final settings = context.read<SettingsService>();
+      _selectedTime = settings.defaultReminderTime;
     }
   }
 
@@ -48,14 +50,6 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
     }).toSet();
   }
 
-  Future<void> _loadDefaultReminderTime() async {
-    final prefs = await SharedPreferences.getInstance();
-    final hour = prefs.getInt('reminder_hour') ?? 8;
-    final minute = prefs.getInt('reminder_minute') ?? 0;
-    setState(() {
-      _selectedTime = TimeOfDay(hour: hour, minute: minute);
-    });
-  }
 
   final List<Map<String, dynamic>> _days = [
     {'label': 'Mon', 'value': 1},
@@ -121,30 +115,23 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
     if (_formKey.currentState!.validate()) {
       final habitService = context.read<HabitService>();
       final premiumService = context.read<PremiumService>();
-      
-      final List<String> frequencyStrings = _selectedDays.map((d) {
-        switch (d) {
-          case 1: return 'Mon';
-          case 2: return 'Tue';
-          case 3: return 'Wed';
-          case 4: return 'Thu';
-          case 5: return 'Fri';
-          case 6: return 'Sat';
-          case 7: return 'Sun';
-          default: return '';
-        }
-      }).toList();
-
+      final settingsService = context.read<SettingsService>();
       try {
+        List<String> frequencyStrings = _selectedDays.map((val) {
+          return _days.firstWhere((d) => d['value'] == val)['label'] as String;
+        }).toList();
+
         if (widget.habit != null) {
           // Update existing
-          widget.habit!.name = _nameController.text.trim();
-          widget.habit!.colorValue = _selectedColor.value;
-          widget.habit!.reminderHour = _selectedTime.hour;
-          widget.habit!.reminderMinute = _selectedTime.minute;
-          widget.habit!.frequency = frequencyStrings;
-          
-          await habitService.updateHabit(widget.habit!);
+          await habitService.updateHabit(
+            id: widget.habit!.id,
+            name: _nameController.text.trim(),
+            colorValue: _selectedColor.value,
+            frequency: frequencyStrings,
+            reminderHour: _selectedTime.hour,
+            reminderMinute: _selectedTime.minute,
+            sound: settingsService.notificationSound,
+          );
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
@@ -164,6 +151,7 @@ class _AddHabitScreenState extends State<AddHabitScreen> {
             isPremium: premiumService.isPremium,
             reminderHour: _selectedTime.hour,
             reminderMinute: _selectedTime.minute,
+            sound: settingsService.notificationSound,
           );
 
           if (mounted) {

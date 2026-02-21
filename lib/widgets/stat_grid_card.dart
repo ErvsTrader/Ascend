@@ -68,7 +68,7 @@ class StatGridCard extends StatelessWidget {
               Text(
                 value,
                 style: AppTypography.displayLarge.copyWith(
-                  fontSize: 24,
+                  fontSize: 32,
                   fontWeight: FontWeight.bold,
                   color: AppColors.textPrimary,
                 ),

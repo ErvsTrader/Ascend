@@ -16,8 +16,15 @@ class AdService extends ChangeNotifier {
   bool _isInterstitialAdLoaded = false;
   DateTime? _lastInterstitialTime;
 
-  static const String bannerAdUnitId = 'ca-app-pub-3940256099942544/6300978111';
-  static const String interstitialAdUnitId = 'ca-app-pub-3940256099942544/1033173712';
+  // TODO: Replace with your real AdMob Unit IDs from AdMob Console
+  // These are Test IDs: https://developers.google.com/admob/android/test-ads
+  static const String bannerAdUnitId = kReleaseMode 
+      ? 'ca-app-pub-YOUR_APP_ID/YOUR_BANNER_ID' // Enter Real Production ID here
+      : 'ca-app-pub-3940256099942544/6300978111'; // Test ID
+
+  static const String interstitialAdUnitId = kReleaseMode
+      ? 'ca-app-pub-YOUR_APP_ID/YOUR_INTERSTITIAL_ID' // Enter Real Production ID here
+      : 'ca-app-pub-3940256099942544/1033173712'; // Test ID
 
   /// Initialise the Mobile Ads SDK.
   static Future<void> initialize() async {

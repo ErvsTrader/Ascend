@@ -11,12 +11,14 @@ import '../models/habit.dart';
 
 class HabitCard extends StatefulWidget {
   final Habit habit;
+  final DateTime? targetDate;
   final VoidCallback? onToggle;
   final VoidCallback? onTap;
 
   const HabitCard({
     super.key,
     required this.habit,
+    this.targetDate,
     this.onToggle,
     this.onTap,
   });
@@ -30,7 +32,8 @@ class _HabitCardState extends State<HabitCard> {
 
   @override
   Widget build(BuildContext context) {
-    final completed = widget.habit.isCompletedToday();
+    final displayDate = widget.targetDate ?? DateTime.now();
+    final completed = widget.habit.isCompletedOn(displayDate);
     final streak = widget.habit.getCurrentStreak();
     final timeStr = _formatTime(widget.habit.reminderTime);
 

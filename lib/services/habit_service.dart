@@ -41,6 +41,9 @@ class HabitService extends ChangeNotifier {
     }
   }
 
+  /// Getter for all habits (alias for getAllHabits)
+  List<Habit> get habits => getAllHabits();
+
   /// Single habit by [id], or `null` if not found.
   Habit? getHabitById(String id) {
     try {
@@ -63,6 +66,7 @@ class HabitService extends ChangeNotifier {
     required bool isPremium,
     int reminderHour = 8,
     int reminderMinute = 0,
+    String? sound,
   }) async {
     try {
       if (!isPremium && totalCount >= 5) {
@@ -81,7 +85,7 @@ class HabitService extends ChangeNotifier {
       await _box.put(habit.id, habit);
       
       // Schedule reminder
-      await _notifications.scheduleHabitReminder(habit);
+      await _notifications.scheduleHabitReminder(habit, sound: sound);
       
       notifyListeners();
       return habit;
@@ -102,6 +106,7 @@ class HabitService extends ChangeNotifier {
     List<String>? frequency,
     int? reminderHour,
     int? reminderMinute,
+    String? sound,
   }) async {
     try {
       final habit = getHabitById(id);
@@ -119,7 +124,7 @@ class HabitService extends ChangeNotifier {
       await habit.save();
 
       // Reschedule reminder
-      await _notifications.scheduleHabitReminder(habit);
+      await _notifications.scheduleHabitReminder(habit, sound: sound);
 
       notifyListeners();
     } catch (e) {
@@ -192,17 +197,25 @@ class HabitService extends ChangeNotifier {
   // ── Aggregate helpers ───────────────────────────────────────────────────
 
   /// Number of habits completed today.
-  int get completedTodayCount =>
-      getAllHabits().where((h) => h.isCompletedToday()).length;
+  int get completedTodayCount => getCompletedCountForDate(DateTime.now());
+
+  /// Number of habits completed on a specific [date].
+  int getCompletedCountForDate(DateTime date) {
+    final habits = getAllHabits();
+    return habits.where((h) => h.isCompletedOn(date)).length;
+  }
 
   /// Total active habit count.
   int get totalCount => _box.length;
 
   /// Today's completion fraction (0.0 – 1.0).
-  double get todayProgress {
+  double get todayProgress => getProgressForDate(DateTime.now());
+
+  /// Completion fraction (0.0 – 1.0) for a specific [date].
+  double getProgressForDate(DateTime date) {
     final total = totalCount;
     if (total == 0) return 0.0;
-    return completedTodayCount / total;
+    return getCompletedCountForDate(date) / total;
   }
 
   /// Completion rate (0.0 - 1.0) for a specific date range across all habits.

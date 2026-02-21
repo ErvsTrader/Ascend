@@ -153,6 +153,15 @@ class AppTypography {
   );
 
   // ── Titles ───────────────────────────────────────────────────────────────
+  /// Large title for major sections
+  static const TextStyle titleLarge = TextStyle(
+    fontFamily: _fontFamily,
+    fontSize: 20,
+    fontWeight: FontWeight.w600,
+    height: 1.3,
+    color: AppColors.textPrimary,
+  );
+
   /// Habit name in list – "Morning Meditation", "Read 20 Pages".
   static const TextStyle titleMedium = TextStyle(
     fontFamily: _fontFamily,
@@ -337,6 +346,9 @@ class AppSpacing {
 
   /// 48px – page-level vertical gutters.
   static const double huge = 48;
+
+  /// 64px - huge spacing
+  static const double xxxxl = 64;
 
   // ── Semantic aliases ─────────────────────────────────────────────────────
   /// Horizontal padding for all page content.

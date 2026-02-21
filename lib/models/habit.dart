@@ -76,9 +76,13 @@ class Habit extends HiveObject {
   // ── Methods ────────────────────────────────────────────────────────────
 
   /// Whether the habit has been marked complete for today.
-  bool isCompletedToday() {
-    final today = _dateOnly(DateTime.now());
-    return completedDates.any((d) => _dateOnly(d) == today);
+  bool isCompletedToday() => isCompletedOn(DateTime.now());
+
+  /// Whether the habit has been marked complete for a specific [date].
+  bool isCompletedOn(DateTime date) {
+    if (completedDates.isEmpty) return false;
+    final target = _dateOnly(date);
+    return completedDates.any((d) => _dateOnly(d) == target);
   }
 
   /// Number of consecutive days completed ending at today (or the most

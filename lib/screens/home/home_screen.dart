@@ -11,8 +11,11 @@ import '../../widgets/daily_progress_card.dart';
 import '../../widgets/habit_card.dart';
 import '../../widgets/weekly_streak.dart';
 import '../../widgets/ad_banner.dart';
+import '../../services/ad_service.dart';
 import '../../services/mood_service.dart';
 import '../mood/mood_check_in_sheet.dart';
+import 'habit_detail_screen.dart';
+import 'add_habit_screen.dart';
 
 // ---------------------------------------------------------------------------
 // HomeScreen – matches Visily /UI/Home.png
@@ -28,6 +31,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   String _userName = 'there';
   late ConfettiController _confettiController;
+  DateTime _selectedDate = DateTime.now();
 
   @override
   void initState() {
@@ -124,12 +128,11 @@ class _HomeScreenState extends State<HomeScreen> {
     final habitService = context.watch<HabitService>();
     final moodService = context.watch<MoodService>();
     final habits = habitService.getAllHabits();
-    final completedCount = habitService.completedTodayCount;
+    final completedCount = habitService.getCompletedCountForDate(_selectedDate);
     final totalCount = habitService.totalCount;
-    final todayMood = moodService.getMoodByDate(now);
-
     // Collect completed dates this week for the streak widget.
     final now = DateTime.now();
+    final todayMood = moodService.getMoodByDate(now);
     final monday = now.subtract(Duration(days: now.weekday - 1));
     final completedThisWeek = <DateTime>{};
     for (final habit in habits) {
@@ -332,7 +335,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 onPressed: () {
                                   Navigator.push(
                                     context,
-                                    MaterialPageRoute(builder: (context) => const AddHabitScreen()),
+                                    MaterialPageRoute(builder: (context) => AddHabitScreen()),
                                   );
                                 },
                                 child: const Text('Add My First Habit'),
@@ -376,14 +379,16 @@ class _HomeScreenState extends State<HomeScreen> {
                             },
                             child: HabitCard(
                               habit: habit,
+                              targetDate: _selectedDate,
                               onToggle: () async {
-                                final now = DateTime.now();
-                                final wasCompleted = habit.isCompletedToday();
-                                final completed = await habitService.markComplete(habit.id, now);
+                                final wasCompleted = habit.isCompletedOn(_selectedDate);
+                                final completed = await habitService.markComplete(habit.id, _selectedDate);
                                 
                                 if (completed && !wasCompleted) {
                                   final streak = habit.getCurrentStreak();
-                                  if (streak >= 7) {
+                                  if (streak >= 7 && 
+                                      DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day) == 
+                                      DateTime(now.year, now.month, now.day)) {
                                     _confettiController.play();
                                   }
                                   
@@ -443,7 +448,13 @@ class _HomeScreenState extends State<HomeScreen> {
                         AppSpacing.pageHorizontal,
                         AppSpacing.lg,
                       ),
-                      child: WeeklyStreak(completedDates: completedThisWeek),
+                      child: WeeklyStreak(
+                        completedDates: completedThisWeek,
+                        selectedDate: _selectedDate,
+                        onDateSelected: (date) {
+                          setState(() => _selectedDate = date);
+                        },
+                      ),
                     ),
                   ),
 
